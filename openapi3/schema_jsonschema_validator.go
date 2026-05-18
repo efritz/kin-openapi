@@ -202,11 +202,35 @@ func formatValidationError(verr *jsonschema.ValidationError, parentPath string) 
 
 // useJSONSchema2020 validates using the JSON Schema 2020-12 validator
 func (schema *Schema) useJSONSchema2020(settings *schemaValidationSettings, value any) error {
-	validator, err := newJSONSchemaValidator(schema)
-	if err != nil {
-		// Fall back to built-in validator if compilation fails
-		return schema.visitJSON(settings, value)
+	if validator, ok := schema.getOrCreateValidator(); ok {
+		return validator.validate(value)
 	}
 
-	return validator.validate(value)
+	// Fall back to built-in validator if compilation fails
+	return schema.visitJSON(settings, value)
+}
+
+func (schema *Schema) getOrCreateValidator() (*jsonSchemaValidator, bool) {
+	schema.validatorMu.RLock()
+	validator := schema.validator
+	schema.validatorMu.RUnlock()
+
+	if validator != nil {
+		return validator, true
+	}
+
+	schema.validatorMu.Lock()
+	defer schema.validatorMu.Unlock()
+
+	if schema.validator != nil {
+		return schema.validator, true
+	}
+
+	validator, err := newJSONSchemaValidator(schema)
+	if err != nil {
+		return nil, false
+	}
+
+	schema.validator = validator
+	return validator, true
 }

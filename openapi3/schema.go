@@ -165,6 +165,9 @@ type Schema struct {
 	ContentMediaType string     `json:"contentMediaType,omitempty" yaml:"contentMediaType,omitempty"` // OpenAPI >=3.1
 	ContentEncoding  string     `json:"contentEncoding,omitempty" yaml:"contentEncoding,omitempty"`   // OpenAPI >=3.1
 	ContentSchema    *SchemaRef `json:"contentSchema,omitempty" yaml:"contentSchema,omitempty"`       // OpenAPI >=3.1
+
+	validatorMu sync.RWMutex
+	validator   *jsonSchemaValidator
 }
 
 // Types represents the type(s) of a schema.

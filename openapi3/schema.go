@@ -1930,9 +1930,38 @@ func (schema *Schema) IsMatchingJSONObject(value map[string]any) bool {
 	return schema.visitJSON(settings, value) == nil
 }
 
+// fastValidators holds hand-generated validators registered via
+// RegisterFastValidator, keyed by the "x-fast-validator" extension value of
+// the schema they replace the generic path for.
+var fastValidators = map[string]func(any) error{}
+
+// RegisterFastValidator registers fn as the validator for any schema whose
+// "x-fast-validator" extension equals key. VisitJSON checks this registry
+// before falling into the generic jsonschema-v6 path. See
+// dev/oneof-validator-generator in the code-intelligence repo (CODESEARCH-2051):
+// a oneOf schema that is a discriminated union can be validated by dispatching
+// directly to the matching branch instead of testing every branch.
+func RegisterFastValidator(key string, fn func(any) error) {
+	fastValidators[key] = fn
+}
+
 // VisitJSON applies a Schema to the given data, considering opts.
 // To validate data against an OpenAPIv3.1+ schema, be sure to pass the EnableJSONSchema2020() option.
 func (schema *Schema) VisitJSON(value any, opts ...SchemaValidationOption) error {
+	if key, ok := schema.Extensions["x-fast-validator"].(string); ok {
+		if fn, ok := fastValidators[key]; ok {
+			return fn(value)
+		}
+	}
+	return schema.VisitJSONGeneric(value, opts...)
+}
+
+// VisitJSONGeneric behaves like VisitJSON but always takes the generic
+// jsonschema-v6/built-in path, ignoring any registered fast validator. A fast
+// validator's equivalence test uses this as its reference oracle, so the
+// oracle can never silently exercise the fast path it is meant to check
+// against.
+func (schema *Schema) VisitJSONGeneric(value any, opts ...SchemaValidationOption) error {
 	settings := newSchemaValidationSettings(opts...)
 
 	if settings.useJSONSchema2020 {
